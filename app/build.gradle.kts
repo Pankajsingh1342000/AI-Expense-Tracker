@@ -2,12 +2,18 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("androidx.room")
+    id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
 }
 
 android {
     namespace = "com.example.aiexpensetracker"
     compileSdk = 36
+
+    room {
+        schemaDirectory("$projectDir/schemas")
+    }
 
     defaultConfig {
         applicationId = "com.example.aiexpensetracker"
@@ -59,13 +65,13 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
 
-    // Hilt
-    implementation(libs.hilt.android)
+    // Dagger-Hilt
+    implementation(libs.dagger.hilt.android)
     ksp(libs.hilt.compiler)
+    ksp(libs.androidx.hilt.compiler)
 
     // Room
     implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
     // Coroutines
@@ -79,6 +85,12 @@ dependencies {
 
     // JSON
     implementation(libs.gson)
+
+    // Date/Time
+    implementation(libs.threetenabp)
+
+    // Logging
+    implementation(libs.timber)
 
 
     testImplementation(libs.junit)
