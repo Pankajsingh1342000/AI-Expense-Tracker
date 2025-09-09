@@ -95,7 +95,7 @@ class ProcessQueryUseCase @Inject constructor(
     private suspend fun handleCountQuery(query: String): QueryResult {
         return when {
             query.contains("this month") -> {
-                val count = expenseRepository.getExpenseCountCurrentWeek()
+                val count = expenseRepository.getExpenseCountCurrentMonth()
                 QueryResult("You made $count transactions this month.")
             }
 

@@ -92,6 +92,12 @@ dependencies {
     // Logging
     implementation(libs.timber)
 
+    // Voice recognition
+    implementation(libs.androidx.activity.compose)
+
+    // Permissions
+    implementation(libs.androidx.activity.ktx)
+
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

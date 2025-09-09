@@ -5,7 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.example.aiexpensetracker.presentation.screens.chat.ChatScreen
+import com.example.aiexpensetracker.presentation.screens.chat.presentation.screen.ChatScreen
 import com.example.aiexpensetracker.presentation.screens.expenses.ExpensesScreen
 import com.example.aiexpensetracker.presentation.screens.home.HomeScreen
 import com.example.aiexpensetracker.presentation.screens.settings.SettingsScreen
