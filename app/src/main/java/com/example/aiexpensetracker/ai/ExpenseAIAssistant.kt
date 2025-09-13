@@ -82,11 +82,23 @@ class ExpenseAIAssistant @Inject constructor(
             "expenses of", "expense of", "transactions of", "spending of",
             "expenses for", "expense for", "transactions for", "spending for",
             "insights on", "insights of", "breakdown on", "breakdown of",
+            "insights for", "breakdown for", "analysis for", "analysis of",
             "spent on", "spent of", "paid on", "paid of", "bought on", "bought of"
         )
 
         if (dateQueryPatterns.any { pattern ->
                 input.contains(pattern, ignoreCase = true)
+            }) {
+            return true
+        }
+
+        val timeSpecificPatterns = listOf(
+            "this week", "this month", "last week", "last month",
+            "current week", "current month", "previous month"
+        )
+
+        if (timeSpecificPatterns.any { period ->
+                input.contains(period, ignoreCase = true)
             }) {
             return true
         }

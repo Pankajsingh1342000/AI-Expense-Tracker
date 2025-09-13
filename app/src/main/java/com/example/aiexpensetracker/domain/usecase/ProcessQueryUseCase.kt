@@ -24,6 +24,9 @@ class ProcessQueryUseCase @Inject constructor(
                     handleCountQuery(normalizedQuery)
                 }
 
+                // Time-specific insight queries
+                containsTimeSpecificInsights(normalizedQuery) -> handleTimeSpecificInsights(normalizedQuery)
+
                 // Date-based queries
                 containsDateQuery(normalizedQuery) -> handleDateQuery(normalizedQuery)
 
@@ -140,6 +143,138 @@ class ProcessQueryUseCase @Inject constructor(
             }
         }
     }
+
+    private suspend fun handleTimeSpecificInsights(query: String): QueryResult {
+        return when {
+            // This Month Insights
+            query.contains("this month", ignoreCase = true) || query.contains("current month", ignoreCase = true) -> {
+                val expenses = expenseRepository.getExpenseByCurrentMonth()
+                val total = expenses.sumOf { it.amount }
+                val count = expenses.size
+                val average = if (count > 0) total / count else 0.0
+
+                val categoryBreakdown = expenses.groupBy { it.category }
+                    .mapValues { it.value.sumOf { expense -> expense.amount } }
+                    .toList()
+                    .sortedByDescending { it.second }
+                    .take(5)
+
+                val largestExpense = expenses.maxByOrNull { it.amount }
+                val smallestExpense = expenses.minByOrNull { it.amount }
+
+                val insightText = buildString {
+                    appendLine("📊 This Month Insights:")
+                    appendLine()
+                    appendLine("💰 Total Spent: ₹${String.format("%.2f", total)}")
+                    appendLine("🔢 Total Transactions: $count")
+                    appendLine("📱 Average per Transaction: ₹${String.format("%.2f", average)}")
+                    appendLine()
+                    appendLine("📂 Top Categories:")
+                    categoryBreakdown.forEach { (category, amount) ->
+                        val percentage = if (total > 0) (amount / total) * 100 else 0.0
+                        appendLine("• $category: ₹${String.format("%.2f", amount)} (${String.format("%.1f", percentage)}%)")
+                    }
+                    appendLine()
+                    largestExpense?.let {
+                        appendLine("🏆 Largest Expense: ₹${String.format("%.2f", it.amount)} - ${it.description}")
+                    }
+                    smallestExpense?.let {
+                        appendLine("💸 Smallest Expense: ₹${String.format("%.2f", it.amount)} - ${it.description}")
+                    }
+                }
+
+                QueryResult(insightText.trim(), expenses)
+            }
+
+            // Last Month Insights
+            query.contains("last month", ignoreCase = true) || query.contains("previous month", ignoreCase = true) -> {
+                val expenses = expenseRepository.getExpensesByLastMonth()
+                val total = expenses.sumOf { it.amount }
+                val count = expenses.size
+                val average = if (count > 0) total / count else 0.0
+
+                val categoryBreakdown = expenses.groupBy { it.category }
+                    .mapValues { it.value.sumOf { expense -> expense.amount } }
+                    .toList()
+                    .sortedByDescending { it.second }
+                    .take(5)
+
+                val largestExpense = expenses.maxByOrNull { it.amount }
+                val smallestExpense = expenses.minByOrNull { it.amount }
+
+                val insightText = buildString {
+                    appendLine("📊 Last Month Insights:")
+                    appendLine()
+                    appendLine("💰 Total Spent: ₹${String.format("%.2f", total)}")
+                    appendLine("🔢 Total Transactions: $count")
+                    appendLine("📱 Average per Transaction: ₹${String.format("%.2f", average)}")
+                    appendLine()
+                    appendLine("📂 Top Categories:")
+                    categoryBreakdown.forEach { (category, amount) ->
+                        val percentage = if (total > 0) (amount / total) * 100 else 0.0
+                        appendLine("• $category: ₹${String.format("%.2f", amount)} (${String.format("%.1f", percentage)}%)")
+                    }
+                    appendLine()
+                    largestExpense?.let {
+                        appendLine("🏆 Largest Expense: ₹${String.format("%.2f", it.amount)} - ${it.description}")
+                    }
+                    smallestExpense?.let {
+                        appendLine("💸 Smallest Expense: ₹${String.format("%.2f", it.amount)} - ${it.description}")
+                    }
+                }
+
+                QueryResult(insightText.trim(), expenses)
+            }
+
+            // This Week Insights
+            query.contains("this week", ignoreCase = true) || query.contains("current week", ignoreCase = true) -> {
+                val expenses = expenseRepository.getExpensesByCurrentWeek()
+                val total = expenses.sumOf { it.amount }
+                val count = expenses.size
+                val average = if (count > 0) total / count else 0.0
+
+                val categoryBreakdown = expenses.groupBy { it.category }
+                    .mapValues { it.value.sumOf { expense -> expense.amount } }
+                    .toList()
+                    .sortedByDescending { it.second }
+                    .take(5)
+
+                val largestExpense = expenses.maxByOrNull { it.amount }
+                val smallestExpense = expenses.minByOrNull { it.amount }
+
+                val insightText = buildString {
+                    appendLine("📊 This Week Insights:")
+                    appendLine()
+                    appendLine("💰 Total Spent: ₹${String.format("%.2f", total)}")
+                    appendLine("🔢 Total Transactions: $count")
+                    appendLine("📱 Average per Transaction: ₹${String.format("%.2f", average)}")
+                    appendLine()
+                    if (categoryBreakdown.isNotEmpty()) {
+                        appendLine("📂 Top Categories:")
+                        categoryBreakdown.forEach { (category, amount) ->
+                            val percentage = if (total > 0) (amount / total) * 100 else 0.0
+                            appendLine("• $category: ₹${String.format("%.2f", amount)} (${String.format("%.1f", percentage)}%)")
+                        }
+                        appendLine()
+                    }
+                    largestExpense?.let {
+                        appendLine("🏆 Largest Expense: ₹${String.format("%.2f", it.amount)} - ${it.description}")
+                    }
+                    smallestExpense?.let {
+                        appendLine("💸 Smallest Expense: ₹${String.format("%.2f", it.amount)} - ${it.description}")
+                    }
+                }
+
+                QueryResult(insightText.trim(), expenses)
+            }
+
+            else -> {
+                // Fallback to general insights
+                handleInsightsQuery()
+            }
+        }
+    }
+
 
     private suspend fun handleAverageQuery(query: String): QueryResult {
         return when {
@@ -683,6 +818,28 @@ class ProcessQueryUseCase @Inject constructor(
 
         Timber.d("containsDateQuery: no date patterns matched")
         return false
+    }
+
+    private fun containsTimeSpecificInsights(query: String): Boolean {
+        val timeSpecificInsightPatterns = listOf(
+            "insights? for this month",
+            "insights? for last month",
+            "insights? for previous month",
+            "insights? for this week",
+            "insights? for last week",
+            "insights? for current week",
+            "insights? for current month",
+            "breakdown for this month",
+            "breakdown for last month",
+            "breakdown for this week",
+            "analysis for this month",
+            "analysis for last month",
+            "analysis for this week"
+        )
+
+        return timeSpecificInsightPatterns.any { pattern ->
+            query.contains(Regex(pattern, RegexOption.IGNORE_CASE))
+        }
     }
 
 

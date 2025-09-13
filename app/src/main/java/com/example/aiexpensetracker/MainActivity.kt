@@ -65,8 +65,8 @@ fun BottomNavigationBar(navController: NavHostController) {
     val items = listOf(
         Screen.Home,
         Screen.Chat,
+        Screen.Scan,
         Screen.Expenses,
-        Screen.Settings
     )
 
     NavigationBar {
@@ -79,11 +79,11 @@ fun BottomNavigationBar(navController: NavHostController) {
                     when (screen) {
                         Screen.Home -> Icon(Icons.Default.Home, contentDescription = "Home")
                         Screen.Chat -> Icon(Icons.Default.Face, contentDescription = "Chat")
-                        Screen.Expenses -> Icon(Icons.Default.Info, contentDescription = "Expenses")
-                        Screen.Settings -> Icon(
+                        Screen.Scan -> Icon(
                             Icons.Default.Settings,
-                            contentDescription = "Settings"
+                            contentDescription = "Scan"
                         )
+                        Screen.Expenses -> Icon(Icons.Default.Info, contentDescription = "Expenses")
                     }
                 },
                 label = { Text(screen.route.capitalize()) },

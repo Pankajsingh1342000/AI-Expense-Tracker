@@ -1,4 +1,4 @@
-package com.example.aiexpensetracker.presentation.screens.settings
+package com.example.aiexpensetracker.presentation.screens.scan
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,7 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 
 @Composable
-fun SettingsScreen(
+fun ScanScreen(
     onNavigateBack: () -> Unit
 ) {
     Column(

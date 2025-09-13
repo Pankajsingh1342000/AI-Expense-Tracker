@@ -435,7 +435,6 @@ class ExpenseRepositoryImpl @Inject constructor(
 
         val cal = Calendar.getInstance()
 
-        // Handle relative dates first
         when {
             "today" in normalizedInput -> {
                 Timber.d("parseDateRange: detected 'today'")
@@ -448,8 +447,25 @@ class ExpenseRepositoryImpl @Inject constructor(
                 Timber.d("parseDateRange: detected 'tomorrow'")
                 cal.add(Calendar.DAY_OF_MONTH, 1)
             }
+
+            normalizedInput.contains("this week") || normalizedInput.contains("current week") -> {
+                Timber.d("parseDateRange: detected 'this week'")
+                return getCurrentWeekRange()
+            }
+            normalizedInput.contains("last week") || normalizedInput.contains("previous week") -> {
+                Timber.d("parseDateRange: detected 'last week'")
+                return getLastWeekRange()
+            }
+            normalizedInput.contains("this month") || normalizedInput.contains("current month") -> {
+                Timber.d("parseDateRange: detected 'this month'")
+                return getCurrentMonthRange()
+            }
+            normalizedInput.contains("last month") || normalizedInput.contains("previous month") -> {
+                Timber.d("parseDateRange: detected 'last month'")
+                return getLastMonthRange()
+            }
             else -> {
-                // Try numeric date formats first
+
                 val numericDateRegex = Regex("""\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b""")
                 val numericMatch = numericDateRegex.find(normalizedInput)
 
@@ -489,7 +505,6 @@ class ExpenseRepositoryImpl @Inject constructor(
 
                 val ddMonthMatch = ddMonthPattern.find(normalizedInput)
                 val monthDdMatch = monthDdPattern.find(normalizedInput)
-
                 val textMatch = ddMonthMatch ?: monthDdMatch
 
                 if (textMatch != null) {
@@ -538,8 +553,28 @@ class ExpenseRepositoryImpl @Inject constructor(
         return result
     }
 
+    private fun getLastWeekRange(): Pair<Long, Long> {
+        val calendar = Calendar.getInstance()
+        // Go to last week
+        calendar.add(Calendar.WEEK_OF_YEAR, -1)
+        // Start of week (Monday)
+        calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        val startOfWeek = calendar.timeInMillis
 
+        // End of week (Sunday)
+        calendar.add(Calendar.DAY_OF_WEEK, 6)
+        calendar.set(Calendar.HOUR_OF_DAY, 23)
+        calendar.set(Calendar.MINUTE, 59)
+        calendar.set(Calendar.SECOND, 59)
+        calendar.set(Calendar.MILLISECOND, 999)
+        val endOfWeek = calendar.timeInMillis
 
+        return startOfWeek to endOfWeek
+    }
 
     private fun getStartEndOfDay(cal: Calendar): Pair<Long, Long> {
         val start = Calendar.getInstance().apply {

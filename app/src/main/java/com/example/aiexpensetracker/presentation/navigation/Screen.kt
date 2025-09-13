@@ -8,13 +8,13 @@ import androidx.navigation.compose.composable
 import com.example.aiexpensetracker.presentation.screens.chat.presentation.screen.ChatScreen
 import com.example.aiexpensetracker.presentation.screens.expenses.ExpensesScreen
 import com.example.aiexpensetracker.presentation.screens.home.HomeScreen
-import com.example.aiexpensetracker.presentation.screens.settings.SettingsScreen
+import com.example.aiexpensetracker.presentation.screens.scan.ScanScreen
 
 sealed class Screen(val route: String) {
     object Home: Screen("home")
-    object Chat: Screen("screen")
+    object Chat: Screen("chat")
     object Expenses: Screen("expenses")
-    object Settings: Screen("settings")
+    object Scan: Screen("scan")
 }
 
 @Composable
@@ -46,8 +46,8 @@ fun ExpenseNavigation(
             )
         }
 
-        composable(Screen.Settings.route) {
-            SettingsScreen(
+        composable(Screen.Scan.route) {
+            ScanScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
