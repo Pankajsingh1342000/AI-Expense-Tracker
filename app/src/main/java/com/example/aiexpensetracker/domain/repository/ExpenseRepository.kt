@@ -31,4 +31,8 @@ interface ExpenseRepository {
     suspend fun getSpendingFrequencyByCategory(): List<Pair<String, Int>>
     suspend fun getSpendingInsights(): SpendingInsights
 
+    suspend fun getExpensesBySpecificMonth(month: String): List<Expense>
+    suspend fun getTotalBySpecificMonth(month: String): Double
+    suspend fun getExpenseCountBySpecificMonth(month: String): Int
+
 }

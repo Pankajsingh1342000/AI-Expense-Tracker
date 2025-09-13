@@ -5,11 +5,13 @@ import com.example.aiexpensetracker.domain.model.ai_processing_state.AIProcessin
 import com.example.aiexpensetracker.domain.repository.CategoryRepository
 import com.example.aiexpensetracker.domain.repository.ExpenseRepository
 import com.example.aiexpensetracker.domain.usecase.AddCategoryUseCase
+import com.example.aiexpensetracker.domain.usecase.BudgetUseCase
 import com.example.aiexpensetracker.domain.usecase.CategorizeExpenseUseCase
 import com.example.aiexpensetracker.domain.usecase.ExtractExpenseUseCase
 import com.example.aiexpensetracker.domain.usecase.ProcessQueryUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import javax.inject.Inject
 
 class ExpenseAIAssistant @Inject constructor(
@@ -19,25 +21,56 @@ class ExpenseAIAssistant @Inject constructor(
     private val addCategoryUseCase: AddCategoryUseCase,
     private val expenseRepository: ExpenseRepository,
     private val categoryRepository: CategoryRepository,
+    private val budgetUseCase: BudgetUseCase,
     @DispatcherModule.IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
 
     suspend fun processInput(input: String): AIProcessingResult = withContext(ioDispatcher) {
         val normalizedInput = input.trim().lowercase()
 
-        return@withContext when {
+        Timber.d("Processing input: '$input' (normalized: '$normalizedInput')")
 
+        return@withContext when {
+            // 1. Check for budget/query requests first (higher priority)
+            isBudgetOrQueryRequest(normalizedInput) -> {
+                Timber.d("Detected as budget/query request")
+                handleQuery(input)
+            }
+
+            // 2. Check for category addition
             isAddCategoryRequest(normalizedInput) -> {
+                Timber.d("Detected as category addition request")
                 handleAddCategory(input)
             }
 
+            // 3. Check for expense input (lowest priority, most specific)
             isExpenseInput(normalizedInput) -> {
+                Timber.d("Detected as expense input")
                 handleAddExpense(input)
             }
 
+            // 4. Default to query handling
             else -> {
+                Timber.d("Defaulting to query processing")
                 handleQuery(input)
             }
+        }
+    }
+
+    private fun isBudgetOrQueryRequest(input: String): Boolean {
+        val budgetPatterns = listOf(
+            "budget", "limit", "goal", "target",
+            "set.*budget", "my budget", "budget.*status",
+            "update.*budget", "change.*budget", "modify.*budget",
+            "delete.*budget", "remove.*budget", "clear.*budget",
+            "how much", "total", "spent", "spending", "statistics", "stats",
+            "insights", "summary", "overview", "analysis", "report",
+            "average", "count", "transactions", "compare", "comparison",
+            "trend", "pattern", "breakdown"
+        )
+
+        return budgetPatterns.any { pattern ->
+            input.contains(Regex(pattern, RegexOption.IGNORE_CASE))
         }
     }
 
@@ -48,31 +81,45 @@ class ExpenseAIAssistant @Inject constructor(
             "create.*category",
             "new category"
         )
+
         return categoryPatterns.any { pattern ->
             input.contains(Regex(pattern, RegexOption.IGNORE_CASE))
         }
     }
 
     private fun isExpenseInput(input: String): Boolean {
-        val expensePatterns = listOf(
-            "bought", "purchased", "paid", "spent", "rupees", "rs", "₹"
+        // More specific expense detection
+        val expenseIndicators = listOf(
+            "bought", "purchased", "paid for", "spent on",
+            "i bought", "i purchased", "i paid", "i spent"
         )
-        return expensePatterns.any { pattern ->
-            input.contains(pattern, ignoreCase = true)
-        } || input.matches(Regex(""".*\d+.*""")) // Contains numbers
+
+        val hasExpenseIndicator = expenseIndicators.any { indicator ->
+            input.contains(indicator, ignoreCase = true)
+        }
+
+        val hasAmount = input.contains(Regex("""\d+\s*(?:rupees?|rs\.?|₹)""", RegexOption.IGNORE_CASE))
+
+        // Must have both expense indicator AND amount pattern
+        return hasExpenseIndicator && hasAmount
     }
 
     private suspend fun handleAddCategory(input: String): AIProcessingResult {
-        return if (addCategoryUseCase(input)) {
-            val categoryName = extractCategoryName(input)
-            AIProcessingResult.CategoryAdded(categoryName ?: "New Category")
-        } else {
-            AIProcessingResult.Error("Failed to add category. Please try again.")
+        return try {
+            if (addCategoryUseCase(input)) {
+                val categoryName = extractCategoryName(input)
+                AIProcessingResult.CategoryAdded(categoryName ?: "New Category")
+            } else {
+                AIProcessingResult.Error("Failed to add category. Please try again.")
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Error adding category")
+            AIProcessingResult.Error("Failed to add category: ${e.message}")
         }
     }
 
     private suspend fun handleAddExpense(input: String): AIProcessingResult {
-        try {
+        return try {
             // Extract expense from input
             val extractedExpense = extractExpenseUseCase(input)
                 ?: return AIProcessingResult.InvalidInput
@@ -87,10 +134,12 @@ class ExpenseAIAssistant @Inject constructor(
             // Save to repository
             val savedId = expenseRepository.insertExpense(finalExpense)
 
-            return AIProcessingResult.ExpenseAdded(finalExpense.copy(id = savedId))
+            Timber.d("Successfully added expense: ${finalExpense.description} - ₹${finalExpense.amount}")
+            AIProcessingResult.ExpenseAdded(finalExpense.copy(id = savedId))
 
         } catch (e: Exception) {
-            return AIProcessingResult.Error("Failed to process expense: ${e.message}")
+            Timber.e(e, "Error processing expense")
+            AIProcessingResult.Error("Failed to process expense: ${e.message}")
         }
     }
 
@@ -99,6 +148,7 @@ class ExpenseAIAssistant @Inject constructor(
             val queryResult = processQueryUseCase(input)
             AIProcessingResult.QueryAnswer(queryResult.answer, queryResult.data)
         } catch (e: Exception) {
+            Timber.e(e, "Error processing query")
             AIProcessingResult.Error("Sorry, I couldn't process your query. Please try again.")
         }
     }
@@ -106,13 +156,16 @@ class ExpenseAIAssistant @Inject constructor(
     private fun extractCategoryName(input: String): String? {
         val patterns = listOf(
             Regex("""add\s+(\w+)\s+to\s+the?\s+category""", RegexOption.IGNORE_CASE),
-            Regex("""add\s+(\w+)\s+category""", RegexOption.IGNORE_CASE)
+            Regex("""add\s+(\w+)\s+category""", RegexOption.IGNORE_CASE),
+            Regex("""create\s+(\w+)\s+category""", RegexOption.IGNORE_CASE)
         )
 
         for (pattern in patterns) {
             val match = pattern.find(input)
             if (match != null) {
-                return match.groupValues[1].capitalize()
+                return match.groupValues[1].replaceFirstChar {
+                    if (it.isLowerCase()) it.titlecase() else it.toString()
+                }
             }
         }
         return null

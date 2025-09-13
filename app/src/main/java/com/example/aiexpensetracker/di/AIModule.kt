@@ -2,8 +2,10 @@ package com.example.aiexpensetracker.di
 
 import android.content.Context
 import com.example.aiexpensetracker.ai.speech.VoiceRecognitionService
+import com.example.aiexpensetracker.domain.repository.BudgetRepository
 import com.example.aiexpensetracker.domain.repository.CategoryRepository
 import com.example.aiexpensetracker.domain.usecase.AddCategoryUseCase
+import com.example.aiexpensetracker.domain.usecase.BudgetUseCase
 import com.example.aiexpensetracker.domain.usecase.CategorizeExpenseUseCase
 import com.example.aiexpensetracker.domain.usecase.ExtractExpenseUseCase
 import dagger.Module
@@ -36,4 +38,10 @@ object AIModule {
     fun provideAddCategoryUseCase(
         categoryRepository: CategoryRepository
     ): AddCategoryUseCase = AddCategoryUseCase(categoryRepository)
+
+    @Provides
+    @Singleton
+    fun provideBudgetUseCase(
+        budgetRepository: BudgetRepository
+    ): BudgetUseCase = BudgetUseCase(budgetRepository)
 }

@@ -1,8 +1,8 @@
 package com.example.aiexpensetracker.data.repository
 
-import com.example.aiexpensetracker.data.local.dao.ExpenseDao
-import com.example.aiexpensetracker.data.local.entities.toDomain
-import com.example.aiexpensetracker.data.local.entities.toEntity
+import com.example.aiexpensetracker.data.local.db.dao.ExpenseDao
+import com.example.aiexpensetracker.data.local.db.entities.toDomain
+import com.example.aiexpensetracker.data.local.db.entities.toEntity
 import com.example.aiexpensetracker.di.DispatcherModule.IoDispatcher
 import com.example.aiexpensetracker.domain.model.category.CategoryStatistic
 import com.example.aiexpensetracker.domain.model.expense.Expense
@@ -288,6 +288,37 @@ class ExpenseRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getExpensesBySpecificMonth(month: String): List<Expense> = withContext(ioDispatcher) {
+        try {
+            val (startOfMonth, endOfMonth) = getSpecificMonthRange(month)
+            expenseDao.getExpensesByMonth(startOfMonth, endOfMonth)
+                .map { it.toDomain() }
+        } catch (e: Exception) {
+            Timber.e(e, "Error getting expenses for month: $month")
+            emptyList()
+        }
+    }
+
+    override suspend fun getTotalBySpecificMonth(month: String): Double = withContext(ioDispatcher) {
+        try {
+            val (startOfMonth, endOfMonth) = getSpecificMonthRange(month)
+            expenseDao.getTotalByDateRange(startOfMonth, endOfMonth) ?: 0.0
+        } catch (e: Exception) {
+            Timber.e(e, "Error getting total for month: $month")
+            0.0
+        }
+    }
+
+    override suspend fun getExpenseCountBySpecificMonth(month: String): Int = withContext(ioDispatcher) {
+        try {
+            val (startOfMonth, endOfMonth) = getSpecificMonthRange(month)
+            expenseDao.getExpenseCountByDateRange(startOfMonth, endOfMonth)
+        } catch (e: Exception) {
+            Timber.e(e, "Error getting expense count for month: $month")
+            0
+        }
+    }
+
     private fun getCurrentMonthRange(): Pair<Long, Long> {
         val calendar = Calendar.getInstance()
         val year = calendar.get(Calendar.YEAR)
@@ -345,5 +376,29 @@ class ExpenseRepositoryImpl @Inject constructor(
         val endOfWeek = calendar.timeInMillis
 
         return startOfWeek to endOfWeek
+    }
+
+    private fun getSpecificMonthRange(month: String): Pair<Long, Long> {
+        return try {
+            // Parse month string (format: "yyyy-MM" e.g. "2025-09")
+            val parts = month.split("-")
+            val year = parts[0].toInt()
+            val monthIndex = parts[1].toInt() - 1 // Calendar months are 0-based
+
+            val startOfMonth = Calendar.getInstance().apply {
+                set(year, monthIndex, 1, 0, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+
+            val endOfMonth = Calendar.getInstance().apply {
+                set(year, monthIndex, getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59)
+                set(Calendar.MILLISECOND, 999)
+            }.timeInMillis
+
+            startOfMonth to endOfMonth
+        } catch (e: Exception) {
+            Timber.e(e, "Error parsing month: $month, falling back to current month")
+            getCurrentMonthRange()
+        }
     }
 }

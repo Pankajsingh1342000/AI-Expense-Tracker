@@ -1,7 +1,9 @@
 package com.example.aiexpensetracker.di
 
+import com.example.aiexpensetracker.data.repository.BudgetRepositoryImpl
 import com.example.aiexpensetracker.data.repository.CategoryRepositoryImpl
 import com.example.aiexpensetracker.data.repository.ExpenseRepositoryImpl
+import com.example.aiexpensetracker.domain.repository.BudgetRepository
 import com.example.aiexpensetracker.domain.repository.CategoryRepository
 import com.example.aiexpensetracker.domain.repository.ExpenseRepository
 import dagger.Binds
@@ -22,4 +24,9 @@ abstract class RepositoryModule {
     abstract fun bindCategoryRepository(
         categoryRepositoryImpl: CategoryRepositoryImpl
     ): CategoryRepository
+
+    @Binds
+    abstract fun bindBudgetRepository(
+        budgetRepositoryImpl: BudgetRepositoryImpl
+    ): BudgetRepository
 }

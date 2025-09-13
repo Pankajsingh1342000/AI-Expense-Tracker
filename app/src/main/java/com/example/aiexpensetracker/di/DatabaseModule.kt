@@ -2,7 +2,7 @@ package com.example.aiexpensetracker.di
 
 import android.content.Context
 import androidx.room.Room
-import com.example.aiexpensetracker.data.local.database.ExpenseDatabase
+import com.example.aiexpensetracker.data.local.db.database.ExpenseDatabase
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.Module

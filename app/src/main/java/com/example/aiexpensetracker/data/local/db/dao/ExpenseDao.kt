@@ -1,10 +1,10 @@
-package com.example.aiexpensetracker.data.local.dao
+package com.example.aiexpensetracker.data.local.db.dao
 
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
-import com.example.aiexpensetracker.data.local.entities.ExpenseEntity
+import com.example.aiexpensetracker.data.local.db.entities.ExpenseEntity
 import com.example.aiexpensetracker.domain.model.category.CategoryCount
 import com.example.aiexpensetracker.domain.model.category.CategoryTotal
 import kotlinx.coroutines.flow.Flow

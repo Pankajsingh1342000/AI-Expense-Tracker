@@ -1,7 +1,7 @@
 package com.example.aiexpensetracker.data.repository
 
-import com.example.aiexpensetracker.data.local.dao.CategoryDao
-import com.example.aiexpensetracker.data.local.entities.CategoryEntity
+import com.example.aiexpensetracker.data.local.db.dao.CategoryDao
+import com.example.aiexpensetracker.data.local.db.entities.CategoryEntity
 import com.example.aiexpensetracker.di.DispatcherModule.IoDispatcher
 import com.example.aiexpensetracker.domain.model.category.Category
 import com.example.aiexpensetracker.domain.repository.CategoryRepository

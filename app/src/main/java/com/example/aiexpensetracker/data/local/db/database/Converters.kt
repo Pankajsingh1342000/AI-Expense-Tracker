@@ -1,4 +1,4 @@
-package com.example.aiexpensetracker.data.local.database
+package com.example.aiexpensetracker.data.local.db.database
 
 import androidx.room.TypeConverter
 import java.util.Date

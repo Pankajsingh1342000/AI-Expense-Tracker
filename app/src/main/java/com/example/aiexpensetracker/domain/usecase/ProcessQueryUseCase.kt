@@ -1,13 +1,17 @@
 package com.example.aiexpensetracker.domain.usecase
 
+import com.example.aiexpensetracker.data.repository.BudgetRepositoryImpl
 import com.example.aiexpensetracker.data.repository.ExpenseRepositoryImpl
 import com.example.aiexpensetracker.domain.model.query_result.QueryResult
 import timber.log.Timber
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 import javax.inject.Inject
 
 class ProcessQueryUseCase @Inject constructor(
-    private val expenseRepository: ExpenseRepositoryImpl
+    private val expenseRepository: ExpenseRepositoryImpl,
+    private val budgetRepository: BudgetRepositoryImpl
 ) {
 
     suspend operator fun invoke(query: String): QueryResult {
@@ -55,14 +59,17 @@ class ProcessQueryUseCase @Inject constructor(
                     handleLastMonthQuery(normalizedQuery)
                 }
 
+                // This month queries
                 containsAny(normalizedQuery, listOf("this month", "current month")) -> {
                     handleThisMonthQuery(normalizedQuery)
                 }
 
+                // This week queries
                 containsAny(normalizedQuery, listOf("this week", "current week")) -> {
                     handleThisWeekQuery(normalizedQuery)
                 }
 
+                // Today queries
                 containsAny(normalizedQuery, listOf("today")) -> {
                     handleTodayQuery(normalizedQuery)
                 }
@@ -405,28 +412,138 @@ class ProcessQueryUseCase @Inject constructor(
     }
 
     private suspend fun handleBudgetQuery(query: String): QueryResult {
-        val currentMonthTotal = expenseRepository.getTotalCurrentMonth()
+        val budgetUseCase = BudgetUseCase(budgetRepository)
 
-        // Extract budget amount from query if mentioned
-        val mentionedBudget = extractNumber(query)
-
-        return if (mentionedBudget != null) {
-            val remaining = mentionedBudget - currentMonthTotal
-            val percentageUsed = (currentMonthTotal / mentionedBudget) * 100
-
-            when {
-                remaining > 0 -> {
-                    QueryResult("💰 Budget Status:\nBudget: ₹${String.format("%.2f", mentionedBudget)}\nSpent: ₹${String.format("%.2f", currentMonthTotal)} (${String.format("%.1f", percentageUsed)}%)\nRemaining: ₹${String.format("%.2f", remaining)}")
-                }
-                else -> {
-                    val overspent = kotlin.math.abs(remaining)
-                    QueryResult("⚠️ Budget Status:\nBudget: ₹${String.format("%.2f", mentionedBudget)}\nSpent: ₹${String.format("%.2f", currentMonthTotal)}\nOver budget by: ₹${String.format("%.2f", overspent)}")
+        return when {
+            // Setting a new budget
+            query.matches(Regex(""".*set.*budget.*(\d+).*""", RegexOption.IGNORE_CASE)) -> {
+                val budgetAmount = extractNumber(query)
+                if (budgetAmount != null) {
+                    val success = budgetUseCase.setBudget(budgetAmount)
+                    if (success) {
+                        val budgetStatus = budgetUseCase.getBudgetStatus()
+                        QueryResult("✅ Budget set to ₹${String.format("%.2f", budgetAmount)} for this month.\n\n" +
+                                "Current spending: ₹${String.format("%.2f", budgetStatus.totalSpent)}\n" +
+                                "Remaining: ₹${String.format("%.2f", budgetStatus.remaining)}")
+                    } else {
+                        QueryResult("❌ Failed to set budget. Please try again.")
+                    }
+                } else {
+                    QueryResult("❌ Please specify a valid budget amount. Example: 'Set my budget to 5000 rupees'")
                 }
             }
-        } else {
-            QueryResult("💡 To track your budget, you can say something like 'My budget is 5000 rupees' or 'How much of my 3000 rupee budget have I used?'")
+
+            // Updating existing budget
+            query.matches(Regex(""".*update.*budget.*(\d+).*""", RegexOption.IGNORE_CASE)) ||
+                    query.matches(Regex(""".*change.*budget.*(\d+).*""", RegexOption.IGNORE_CASE)) ||
+                    query.matches(Regex(""".*modify.*budget.*(\d+).*""", RegexOption.IGNORE_CASE)) -> {
+                val newBudgetAmount = extractNumber(query)
+                if (newBudgetAmount != null) {
+                    val currentBudget = budgetUseCase.getBudget()
+                    if (currentBudget != null) {
+                        val success = budgetUseCase.updateBudget(newBudgetAmount)
+                        if (success) {
+                            val budgetStatus = budgetUseCase.getBudgetStatus()
+                            val change = newBudgetAmount - currentBudget.amount
+                            val changeText = if (change > 0) {
+                                "increased by ₹${String.format("%.2f", change)}"
+                            } else {
+                                "decreased by ₹${String.format("%.2f", kotlin.math.abs(change))}"
+                            }
+
+                            QueryResult("✅ Budget updated successfully!\n\n" +
+                                    "Previous: ₹${String.format("%.2f", currentBudget.amount)}\n" +
+                                    "New: ₹${String.format("%.2f", newBudgetAmount)} ($changeText)\n\n" +
+                                    "Current spending: ₹${String.format("%.2f", budgetStatus.totalSpent)}\n" +
+                                    "Remaining: ₹${String.format("%.2f", budgetStatus.remaining)}")
+                        } else {
+                            QueryResult("❌ Failed to update budget. Please try again.")
+                        }
+                    } else {
+                        QueryResult("💡 No budget exists to update. Set a budget first by saying:\n'Set my budget to 5000 rupees'")
+                    }
+                } else {
+                    QueryResult("❌ Please specify a valid amount. Example: 'Update my budget to 7000 rupees'")
+                }
+            }
+
+            // Deleting budget
+            query.matches(Regex(""".*delete.*budget.*""", RegexOption.IGNORE_CASE)) ||
+                    query.matches(Regex(""".*remove.*budget.*""", RegexOption.IGNORE_CASE)) ||
+                    query.matches(Regex(""".*clear.*budget.*""", RegexOption.IGNORE_CASE)) -> {
+                val currentBudget = budgetUseCase.getBudget()
+                if (currentBudget != null) {
+                    val success = budgetUseCase.deleteBudget()
+                    if (success) {
+                        QueryResult("🗑️ Budget deleted successfully!\n\n" +
+                                "Removed budget: ₹${String.format("%.2f", currentBudget.amount)}\n" +
+                                "You can set a new budget anytime by saying 'Set my budget to [amount]'")
+                    } else {
+                        QueryResult("❌ Failed to delete budget. Please try again.")
+                    }
+                } else {
+                    QueryResult("💡 No budget exists to delete.")
+                }
+            }
+
+            // Budget status for specific month (e.g., "budget for last month")
+            query.contains("last month", ignoreCase = true) && query.contains("budget", ignoreCase = true) -> {
+                val lastMonth = getLastMonth()
+                val budgetStatus = budgetUseCase.getBudgetStatusForMonth(lastMonth)
+                if (budgetStatus.budget != null) {
+                    val monthName = formatMonthName(lastMonth)
+                    QueryResult("💰 Budget Status for $monthName:\n" +
+                            "Budget: ₹${String.format("%.2f", budgetStatus.budget.amount)}\n" +
+                            "Spent: ₹${String.format("%.2f", budgetStatus.totalSpent)} (${String.format("%.1f", budgetStatus.percentageUsed)}%)\n" +
+                            "${if (budgetStatus.isOverBudget) "Over budget by: ₹${String.format("%.2f", Math.abs(budgetStatus.remaining))}"
+                            else "Remaining: ₹${String.format("%.2f", budgetStatus.remaining)}"}")
+                } else {
+                    QueryResult("💡 No budget was set for last month.")
+                }
+            }
+
+            // Current month budget status
+            query.contains("budget", ignoreCase = true) -> {
+                val budgetStatus = budgetUseCase.getBudgetStatus()
+                if (budgetStatus.budget != null) {
+                    QueryResult("💰 Current Budget Status:\n" +
+                            "Budget: ₹${String.format("%.2f", budgetStatus.budget.amount)}\n" +
+                            "Spent: ₹${String.format("%.2f", budgetStatus.totalSpent)} (${String.format("%.1f", budgetStatus.percentageUsed)}%)\n" +
+                            "${if (budgetStatus.isOverBudget) "⚠️ Over budget by: ₹${String.format("%.2f", Math.abs(budgetStatus.remaining))}"
+                            else "✅ Remaining: ₹${String.format("%.2f", budgetStatus.remaining)}"}")
+                } else {
+                    QueryResult("💡 No budget set for this month. Set one by saying:\n'Set my budget to 5000 rupees'")
+                }
+            }
+
+            else -> QueryResult("I can help you manage budgets! Try:\n" +
+                    "• 'Set my budget to 5000 rupees'\n" +
+                    "• 'Update my budget to 7000'\n" +
+                    "• 'Delete my budget'\n" +
+                    "• 'Show my budget status'")
         }
     }
+
+
+    private fun getLastMonth(): String {
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.MONTH, -1)
+        return SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(calendar.time)
+    }
+
+    private fun formatMonthName(month: String): String {
+        return try {
+            val parts = month.split("-")
+            val year = parts[0]
+            val monthIndex = parts[1].toInt()
+            val monthNames = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+            "${monthNames[monthIndex - 1]} $year"
+        } catch (e: Exception) {
+            month
+        }
+    }
+
 
     private suspend fun handleTrendQuery(query: String): QueryResult {
         val insights = expenseRepository.getSpendingInsights()
@@ -458,7 +575,6 @@ class ProcessQueryUseCase @Inject constructor(
         return QueryResult(trendText.trim())
     }
 
-    // Helper functions
     private fun containsAny(text: String, keywords: List<String>): Boolean {
         return keywords.any { text.contains(it, ignoreCase = true) }
     }
@@ -486,34 +602,40 @@ class ProcessQueryUseCase @Inject constructor(
     private fun generateHelpMessage(): String {
         return """
         I can help you with various expense queries! Try asking:
-        
+
         📊 Totals & Spending:
         • "How much did I spend this month?"
         • "What's my total spending?"
-        
+
         🔢 Counts & Statistics:
         • "How many transactions this week?"
         • "Show me spending statistics"
-        
+
         📈 Insights & Analysis:
         • "Give me spending insights"
         • "What are my spending trends?"
-        
+
         🏆 Top Expenses:
         • "Show me my biggest expenses"
         • "What are my top 5 expenses?"
-        
+
         📂 Category Queries:
         • "How much did I spend on food?"
         • "Show me transport expenses"
-        
+
         📅 Time-based Queries:
         • "Last month expenses"
         • "This week's spending"
-        
-        💰 Averages:
+
+        💰 Budget Management:
+        • "Set my budget to 5000 rupees"
+        • "Update my budget to 7000"
+        • "Delete my budget"
+        • "Show my budget status"
+
+        💡 Averages:
         • "What's my average food expense?"
         • "Average spending per transaction"
-        """.trimIndent()
+    """.trimIndent()
     }
 }

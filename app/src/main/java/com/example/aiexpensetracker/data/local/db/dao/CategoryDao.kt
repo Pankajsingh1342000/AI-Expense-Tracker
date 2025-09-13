@@ -1,11 +1,11 @@
-package com.example.aiexpensetracker.data.local.dao
+package com.example.aiexpensetracker.data.local.db.dao
 
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.example.aiexpensetracker.data.local.entities.CategoryEntity
+import com.example.aiexpensetracker.data.local.db.entities.CategoryEntity
 
 @Dao
 interface CategoryDao {
