@@ -45,12 +45,13 @@ class ExpenseDetectionUseCase @Inject constructor() {
         val patterns = listOf(
             Regex("""\d+\s*(?:rupees?|rs\.?|₹|bucks?)""", RegexOption.IGNORE_CASE),
             Regex("""(?:rupees?|rs\.?|₹)\s*\d+""", RegexOption.IGNORE_CASE),
-            Regex("""\d+(?:\.\d+)?\s*k""", RegexOption.IGNORE_CASE), // "5k"
+            Regex("""\d+(?:\.\d+)?\s*k""", RegexOption.IGNORE_CASE),
             Regex("""(?:cost|paid|spent|bill|fare|fee|price|charge|worth)\s*(?:is|was|of)?\s*\d+""", RegexOption.IGNORE_CASE),
-            Regex("""of\s+\d+\s*(?:rupees?|rs\.?|₹)?""", RegexOption.IGNORE_CASE) // "of 100 rupees"
+            Regex("""of\s+\d+\s*(?:rupees?|rs\.?|₹|bucks?)(?:\s|$)""", RegexOption.IGNORE_CASE)
         )
         return patterns.any { it.find(input) != null }
     }
+
 
     private fun detectExpenseStructure(input: String): Boolean {
         val structurePatterns = listOf(

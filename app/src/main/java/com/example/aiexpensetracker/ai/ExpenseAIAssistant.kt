@@ -71,10 +71,47 @@ class ExpenseAIAssistant @Inject constructor(
             "trend", "pattern", "breakdown"
         )
 
-        return budgetPatterns.any { pattern ->
-            input.contains(Regex(pattern, RegexOption.IGNORE_CASE))
+        if (budgetPatterns.any { pattern ->
+                input.contains(Regex(pattern, RegexOption.IGNORE_CASE))
+            }) {
+            return true
         }
+
+        val dateQueryPatterns = listOf(
+            "expenses on", "expense on", "transactions on", "spending on",
+            "expenses of", "expense of", "transactions of", "spending of",
+            "expenses for", "expense for", "transactions for", "spending for",
+            "insights on", "insights of", "breakdown on", "breakdown of",
+            "spent on", "spent of", "paid on", "paid of", "bought on", "bought of"
+        )
+
+        if (dateQueryPatterns.any { pattern ->
+                input.contains(pattern, ignoreCase = true)
+            }) {
+            return true
+        }
+
+        val normalizedInput = input.replace(Regex("""(\d+)(st|nd|rd|th)""", RegexOption.IGNORE_CASE), "$1")
+            .lowercase().trim()
+
+        val textualDatePattern = Regex("""\b\d{1,2}\s+(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december)\b""", RegexOption.IGNORE_CASE)
+        if (textualDatePattern.containsMatchIn(normalizedInput)) {
+            return true
+        }
+
+        val numericDatePattern = Regex("""\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b""")
+        if (numericDatePattern.containsMatchIn(normalizedInput)) {
+            return true
+        }
+
+        val relativeDateKeywords = listOf("today", "yesterday", "tomorrow")
+        if (relativeDateKeywords.any { normalizedInput.contains(it) }) {
+            return true
+        }
+
+        return false
     }
+
 
     private fun isAddCategoryRequest(input: String): Boolean {
         val categoryPatterns = listOf(

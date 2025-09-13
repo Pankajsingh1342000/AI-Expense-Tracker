@@ -1,6 +1,7 @@
 package com.example.aiexpensetracker.domain.repository
 
 import com.example.aiexpensetracker.domain.model.category.CategoryStatistic
+import com.example.aiexpensetracker.domain.model.expense.DateInsights
 import com.example.aiexpensetracker.domain.model.expense.Expense
 import com.example.aiexpensetracker.domain.model.expense.SpendingInsights
 import kotlinx.coroutines.flow.Flow
@@ -34,5 +35,8 @@ interface ExpenseRepository {
     suspend fun getExpensesBySpecificMonth(month: String): List<Expense>
     suspend fun getTotalBySpecificMonth(month: String): Double
     suspend fun getExpenseCountBySpecificMonth(month: String): Int
+
+    suspend fun getExpensesByDateQuery(raw: String): List<Expense>
+    suspend fun getInsightsByDateQuery(raw: String): DateInsights
 
 }

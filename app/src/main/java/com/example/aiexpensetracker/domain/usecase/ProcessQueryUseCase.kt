@@ -24,6 +24,9 @@ class ProcessQueryUseCase @Inject constructor(
                     handleCountQuery(normalizedQuery)
                 }
 
+                // Date-based queries
+                containsDateQuery(normalizedQuery) -> handleDateQuery(normalizedQuery)
+
                 // Average-based queries
                 containsAny(normalizedQuery, listOf("average", "typical", "usual", "mean")) -> {
                     handleAverageQuery(normalizedQuery)
@@ -575,9 +578,113 @@ class ProcessQueryUseCase @Inject constructor(
         return QueryResult(trendText.trim())
     }
 
+    private suspend fun handleDateQuery(raw: String): QueryResult {
+        val range = expenseRepository.parseDateRange(raw)
+            ?: return QueryResult("Couldn’t parse that date. Try “12 September” or “yesterday.”")
+        val (startTs, _) = range
+
+        return if (raw.contains("insight", ignoreCase = true) || raw.contains("breakdown", ignoreCase = true)) {
+            val di = expenseRepository.getInsightsByDateQuery(raw)
+            if (di.expenses.isEmpty()) {
+                val d = expenseRepository.formatDate(startTs)
+                QueryResult("No expenses on $d to generate insights.")
+            } else {
+                val sb = StringBuilder()
+                val d = expenseRepository.formatDate(startTs)
+                sb.appendLine("📊 Insights for $d:")
+                    .appendLine("💰 Total: ₹${"%.2f".format(di.totalSpent)}")
+                    .appendLine("🔢 Count: ${di.transactionCount}")
+                    .appendLine("📱 Avg: ₹${"%.2f".format(di.averagePerTransaction)}")
+                    .appendLine("\nCategory breakdown:")
+                di.categoryBreakdown.forEach { (cat, amt) ->
+                    val pct = amt / di.totalSpent * 100
+                    sb.appendLine("• $cat: ₹${"%.2f".format(amt)} (${String.format("%.1f", pct)}%)")
+                }
+                di.largestExpense?.let {
+                    sb.appendLine("\n🏆 Largest: ₹${"%.2f".format(it.amount)} – ${it.description}")
+                }
+                di.smallestExpense?.let {
+                    sb.appendLine("💸 Smallest: ₹${"%.2f".format(it.amount)} – ${it.description}")
+                }
+                QueryResult(sb.toString().trim(), di.expenses)
+            }
+        } else {
+            val transaction = expenseRepository.getExpensesByDateQuery(raw)
+            val d = expenseRepository.formatDate(startTs)
+            if (transaction.isEmpty()) {
+                QueryResult("No expenses found for $d.")
+            } else {
+                val total = transaction.sumOf { it.amount }
+                val details = transaction.joinToString("\n") {
+                    "• ₹${"%.2f".format(it.amount)} – ${it.description} (${it.category})"
+                }
+                val text = StringBuilder()
+                text.appendLine("💰 Expenses for $d:")
+                    .appendLine("Total: ₹${"%.2f".format(total)} across ${transaction.size} transactions")
+                    .appendLine("Details: $details")
+                QueryResult(text.toString().trim(), transaction)
+            }
+        }
+    }
+
+
     private fun containsAny(text: String, keywords: List<String>): Boolean {
         return keywords.any { text.contains(it, ignoreCase = true) }
     }
+
+    private fun containsDateQuery(query: String): Boolean {
+        Timber.d("containsDateQuery: checking query = '$query'")
+
+        // Normalize the input first
+        val normalizedInput = query.replace(Regex("""(\d+)(st|nd|rd|th)""", RegexOption.IGNORE_CASE), "$1")
+            .lowercase().trim()
+
+        Timber.d("containsDateQuery: normalized = '$normalizedInput'")
+
+        // Expanded list of date-related keywords
+        val dateKeywords = listOf(
+            "expenses on", "expense on", "transactions on", "spending on",
+            "expenses of", "expense of", "transactions of", "spending of",
+            "expenses for", "expense for", "transactions for", "spending for",
+            "insights on", "insights of", "breakdown on", "breakdown of",
+            "spent on", "paid on", "bought on"
+        )
+
+        for (keyword in dateKeywords) {
+            if (normalizedInput.contains(keyword)) {
+                Timber.d("containsDateQuery: matched keyword '$keyword'")
+                return true
+            }
+        }
+
+        val ddMonthPattern = Regex("""\b\d{1,2}\s+(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december)\b""", RegexOption.IGNORE_CASE)
+        val monthDdPattern = Regex("""\b(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december)\s+\d{1,2}\b""", RegexOption.IGNORE_CASE)
+
+        if (ddMonthPattern.containsMatchIn(normalizedInput) || monthDdPattern.containsMatchIn(normalizedInput)) {
+            Timber.d("containsDateQuery: matched textual date pattern")
+            return true
+        }
+
+        // Check for numeric date patterns
+        val numericDatePattern = Regex("""\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b""")
+        if (numericDatePattern.containsMatchIn(normalizedInput)) {
+            Timber.d("containsDateQuery: matched numeric date pattern")
+            return true
+        }
+
+        // Check for relative date keywords
+        val relativeDateKeywords = listOf("today", "yesterday", "tomorrow")
+        for (keyword in relativeDateKeywords) {
+            if (normalizedInput.contains(keyword)) {
+                Timber.d("containsDateQuery: matched relative date keyword '$keyword'")
+                return true
+            }
+        }
+
+        Timber.d("containsDateQuery: no date patterns matched")
+        return false
+    }
+
 
     private fun extractCategoryFromQuery(query: String): String {
         return when {
@@ -601,41 +708,73 @@ class ProcessQueryUseCase @Inject constructor(
 
     private fun generateHelpMessage(): String {
         return """
-        I can help you with various expense queries! Try asking:
+    I can help you with various expense queries! Try asking:
 
-        📊 Totals & Spending:
-        • "How much did I spend this month?"
-        • "What's my total spending?"
+    📊 Totals & Spending:
+    • "How much did I spend this month?"
+    • "What's my total spending?"
+    • "Total expenses last month"
 
-        🔢 Counts & Statistics:
-        • "How many transactions this week?"
-        • "Show me spending statistics"
+    🔢 Counts & Statistics:
+    • "How many transactions this week?"
+    • "Show me spending statistics"
+    • "Count of food transactions"
 
-        📈 Insights & Analysis:
-        • "Give me spending insights"
-        • "What are my spending trends?"
+    📈 Insights & Analysis:
+    • "Give me spending insights"
+    • "What are my spending trends?"
+    • "Show me breakdown analysis"
 
-        🏆 Top Expenses:
-        • "Show me my biggest expenses"
-        • "What are my top 5 expenses?"
+    🏆 Top Expenses:
+    • "Show me my biggest expenses"
+    • "What are my top 5 expenses?"
+    • "Largest expenses this month"
 
-        📂 Category Queries:
-        • "How much did I spend on food?"
-        • "Show me transport expenses"
+    📂 Category Queries:
+    • "How much did I spend on food?"
+    • "Show me transport expenses"
+    • "Average entertainment spending"
 
-        📅 Time-based Queries:
-        • "Last month expenses"
-        • "This week's spending"
+    📅 Date-based Queries (Multiple Formats Supported):
+    • "Expenses on 12th September"
+    • "Expenses of September 10th" 
+    • "Expenses for 10 September"
+    • "Transactions on 9/13/2025"
+    • "Spending on yesterday"
+    • "Expenses on today"
 
-        💰 Budget Management:
-        • "Set my budget to 5000 rupees"
-        • "Update my budget to 7000"
-        • "Delete my budget"
-        • "Show my budget status"
+    ⏰ Time-based Queries:
+    • "Last month expenses"
+    • "This week's spending"
+    • "Today's transactions"
+    • "Yesterday's expenses"
 
-        💡 Averages:
-        • "What's my average food expense?"
-        • "Average spending per transaction"
+    💰 Budget Management:
+    • "Set my budget to 5000 rupees"
+    • "Update my budget to 7000"
+    • "Delete my budget"
+    • "Show my budget status"
+    • "Budget for last month"
+
+    💡 Averages & Comparisons:
+    • "What's my average food expense?"
+    • "Average spending per transaction"
+    • "Compare this month vs last month"
+
+    🎯 Smart Features:
+    • Supports both "DD Month" and "Month DD" date formats
+    • Handles ordinal numbers (1st, 2nd, 3rd, etc.)
+    • Works with abbreviated and full month names
+    • Recognizes various expense input patterns
+    • Automatic expense categorization
+
+    Example queries you can try:
+    • "Expenses for September 13th"
+    • "How much did I spend on food this month?"
+    • "Set my budget to 10000 rupees"
+    • "Show me insights for yesterday"
+    • "What are my top 10 expenses?"
     """.trimIndent()
     }
+
 }

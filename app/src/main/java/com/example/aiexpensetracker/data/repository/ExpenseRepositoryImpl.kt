@@ -5,6 +5,7 @@ import com.example.aiexpensetracker.data.local.db.entities.toDomain
 import com.example.aiexpensetracker.data.local.db.entities.toEntity
 import com.example.aiexpensetracker.di.DispatcherModule.IoDispatcher
 import com.example.aiexpensetracker.domain.model.category.CategoryStatistic
+import com.example.aiexpensetracker.domain.model.expense.DateInsights
 import com.example.aiexpensetracker.domain.model.expense.Expense
 import com.example.aiexpensetracker.domain.model.expense.SpendingInsights
 import com.example.aiexpensetracker.domain.repository.ExpenseRepository
@@ -14,7 +15,10 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -319,6 +323,52 @@ class ExpenseRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getExpensesByDateQuery(raw: String): List<Expense> = withContext(ioDispatcher) {
+        val range = parseDateRange(raw) ?: return@withContext emptyList()
+        getExpenseByDateRange(range.first, range.second)
+    }
+
+    override suspend fun getInsightsByDateQuery(raw: String): DateInsights = withContext(ioDispatcher) {
+        val range = parseDateRange(raw)
+            ?: return@withContext DateInsights(
+                date = 0,
+                totalSpent = 0.0,
+                transactionCount = 0,
+                averagePerTransaction = 0.0,
+                largestExpense = null,
+                smallestExpense = null,
+                categoryBreakdown = emptyList(),
+                expenses = emptyList()
+            )
+
+        val (startTs, endTs) = range
+
+        val transactions = getExpenseByDateRange(startTs, endTs)
+
+        val totalSpent = transactions.sumOf { it.amount }
+        val transactionCount = transactions.size
+        val averagePerTransaction = if (transactionCount > 0) totalSpent / transactionCount else 0.0
+        val largestExpense = transactions.maxByOrNull { it.amount }
+        val smallestExpense = transactions.minByOrNull { it.amount }
+        val categoryBreakdown = transactions
+            .groupBy { it.category }
+            .mapValues { it.value.sumOf(Expense::amount) }
+            .toList()
+            .sortedByDescending { it.second }
+
+        DateInsights(
+            date = startTs,
+            totalSpent = totalSpent,
+            transactionCount = transactionCount,
+            averagePerTransaction = averagePerTransaction,
+            largestExpense = largestExpense,
+            smallestExpense = smallestExpense,
+            categoryBreakdown = categoryBreakdown,
+            expenses = transactions
+        )
+    }
+
+
     private fun getCurrentMonthRange(): Pair<Long, Long> {
         val calendar = Calendar.getInstance()
         val year = calendar.get(Calendar.YEAR)
@@ -378,9 +428,145 @@ class ExpenseRepositoryImpl @Inject constructor(
         return startOfWeek to endOfWeek
     }
 
+    fun parseDateRange(raw: String): Pair<Long, Long>? {
+        Timber.d("parseDateRange: raw input = '$raw'")
+        val normalizedInput = normalizeOrdinals(raw.lowercase(Locale.ENGLISH).trim())
+        Timber.d("parseDateRange: normalized input = '$normalizedInput'")
+
+        val cal = Calendar.getInstance()
+
+        // Handle relative dates first
+        when {
+            "today" in normalizedInput -> {
+                Timber.d("parseDateRange: detected 'today'")
+            }
+            "yesterday" in normalizedInput -> {
+                Timber.d("parseDateRange: detected 'yesterday'")
+                cal.add(Calendar.DAY_OF_MONTH, -1)
+            }
+            "tomorrow" in normalizedInput -> {
+                Timber.d("parseDateRange: detected 'tomorrow'")
+                cal.add(Calendar.DAY_OF_MONTH, 1)
+            }
+            else -> {
+                // Try numeric date formats first
+                val numericDateRegex = Regex("""\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b""")
+                val numericMatch = numericDateRegex.find(normalizedInput)
+
+                if (numericMatch != null) {
+                    Timber.d("parseDateRange: found numeric date = '${numericMatch.value}'")
+                    val dateStr = numericMatch.value
+                    val numericFormats = listOf(
+                        SimpleDateFormat("MM/dd/yyyy", Locale.ENGLISH),
+                        SimpleDateFormat("M/d/yyyy", Locale.ENGLISH),
+                        SimpleDateFormat("MM/dd/yy", Locale.ENGLISH),
+                        SimpleDateFormat("M/d/yy", Locale.ENGLISH),
+                        SimpleDateFormat("MM/dd", Locale.ENGLISH),
+                        SimpleDateFormat("M/d", Locale.ENGLISH)
+                    )
+
+                    for (fmt in numericFormats) {
+                        try {
+                            fmt.isLenient = false
+                            val date = fmt.parse(dateStr)
+                            if (date != null) {
+                                cal.time = date
+                                if (!dateStr.contains(Regex("""\d{4}"""))) {
+                                    cal.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+                                }
+                                val result = getStartEndOfDay(cal)
+                                Timber.d("parseDateRange: numeric date parsed successfully, result = $result")
+                                return result
+                            }
+                        } catch (e: Exception) {
+                            Timber.d("parseDateRange: failed to parse with format ${fmt.toPattern()}")
+                        }
+                    }
+                }
+
+                val ddMonthPattern = Regex("""\b\d{1,2}\s+(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december)(?:\s+\d{4})?\b""", RegexOption.IGNORE_CASE)
+                val monthDdPattern = Regex("""\b(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+\d{4})?\b""", RegexOption.IGNORE_CASE)
+
+                val ddMonthMatch = ddMonthPattern.find(normalizedInput)
+                val monthDdMatch = monthDdPattern.find(normalizedInput)
+
+                val textMatch = ddMonthMatch ?: monthDdMatch
+
+                if (textMatch != null) {
+                    Timber.d("parseDateRange: found textual date = '${textMatch.value}'")
+                    val textDateStr = textMatch.value
+                    val textFormats = listOf(
+                        SimpleDateFormat("dd MMMM yyyy", Locale.ENGLISH),
+                        SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH),
+                        SimpleDateFormat("dd MMMM", Locale.ENGLISH),
+                        SimpleDateFormat("dd MMM", Locale.ENGLISH),
+                        SimpleDateFormat("MMMM dd yyyy", Locale.ENGLISH),
+                        SimpleDateFormat("MMM dd yyyy", Locale.ENGLISH),
+                        SimpleDateFormat("MMMM dd", Locale.ENGLISH),
+                        SimpleDateFormat("MMM dd", Locale.ENGLISH)
+                    )
+
+                    for (fmt in textFormats) {
+                        try {
+                            fmt.isLenient = false
+                            val date = fmt.parse(textDateStr)
+                            if (date != null) {
+                                cal.time = date
+                                if (!textDateStr.contains(Regex("""\d{4}"""))) {
+                                    cal.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+                                }
+                                val result = getStartEndOfDay(cal)
+                                Timber.d("parseDateRange: textual date parsed successfully, result = $result")
+                                return result
+                            }
+                        } catch (e: Exception) {
+                            Timber.d("parseDateRange: failed to parse with format ${fmt.toPattern()}")
+                        }
+                    }
+                } else {
+                    Timber.d("parseDateRange: no textual date pattern found in '$normalizedInput'")
+                }
+
+                Timber.d("parseDateRange: no date patterns matched")
+                return null
+            }
+        }
+
+        // For relative dates
+        val result = getStartEndOfDay(cal)
+        Timber.d("parseDateRange: relative date result = $result")
+        return result
+    }
+
+
+
+
+    private fun getStartEndOfDay(cal: Calendar): Pair<Long, Long> {
+        val start = Calendar.getInstance().apply {
+            time = cal.time
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val end = Calendar.getInstance().apply {
+            time = cal.time
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }.timeInMillis
+
+        return start to end
+    }
+
+    fun formatDate(ts: Long): String =
+        SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH).format(Date(ts))
+
+
     private fun getSpecificMonthRange(month: String): Pair<Long, Long> {
         return try {
-            // Parse month string (format: "yyyy-MM" e.g. "2025-09")
             val parts = month.split("-")
             val year = parts[0].toInt()
             val monthIndex = parts[1].toInt() - 1 // Calendar months are 0-based
@@ -400,5 +586,10 @@ class ExpenseRepositoryImpl @Inject constructor(
             Timber.e(e, "Error parsing month: $month, falling back to current month")
             getCurrentMonthRange()
         }
+    }
+
+    private fun normalizeOrdinals(input: String): String {
+        // Remove ordinal suffixes anywhere after digits, not just word boundaries
+        return input.replace(Regex("""(\d+)(st|nd|rd|th)""", RegexOption.IGNORE_CASE), "$1")
     }
 }

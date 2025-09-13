@@ -18,7 +18,7 @@ class AddCategoryUseCase @Inject constructor(
         val keywords = generateDefaultKeywords(categoryName)
 
         val category = Category(
-            name = categoryName.capitalize(),
+            name = categoryName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
             keywords = keywords,
             isDefault = false
         )
