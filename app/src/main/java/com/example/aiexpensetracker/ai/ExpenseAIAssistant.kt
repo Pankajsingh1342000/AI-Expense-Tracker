@@ -7,6 +7,7 @@ import com.example.aiexpensetracker.domain.repository.ExpenseRepository
 import com.example.aiexpensetracker.domain.usecase.AddCategoryUseCase
 import com.example.aiexpensetracker.domain.usecase.BudgetUseCase
 import com.example.aiexpensetracker.domain.usecase.CategorizeExpenseUseCase
+import com.example.aiexpensetracker.domain.usecase.ExpenseDetectionUseCase
 import com.example.aiexpensetracker.domain.usecase.ExtractExpenseUseCase
 import com.example.aiexpensetracker.domain.usecase.ProcessQueryUseCase
 import kotlinx.coroutines.CoroutineDispatcher
@@ -20,6 +21,7 @@ class ExpenseAIAssistant @Inject constructor(
     private val processQueryUseCase: ProcessQueryUseCase,
     private val addCategoryUseCase: AddCategoryUseCase,
     private val expenseRepository: ExpenseRepository,
+    private val expenseDetectionUseCase: ExpenseDetectionUseCase,
     private val categoryRepository: CategoryRepository,
     private val budgetUseCase: BudgetUseCase,
     @DispatcherModule.IoDispatcher private val ioDispatcher: CoroutineDispatcher
@@ -88,20 +90,7 @@ class ExpenseAIAssistant @Inject constructor(
     }
 
     private fun isExpenseInput(input: String): Boolean {
-        // More specific expense detection
-        val expenseIndicators = listOf(
-            "bought", "purchased", "paid for", "spent on",
-            "i bought", "i purchased", "i paid", "i spent"
-        )
-
-        val hasExpenseIndicator = expenseIndicators.any { indicator ->
-            input.contains(indicator, ignoreCase = true)
-        }
-
-        val hasAmount = input.contains(Regex("""\d+\s*(?:rupees?|rs\.?|₹)""", RegexOption.IGNORE_CASE))
-
-        // Must have both expense indicator AND amount pattern
-        return hasExpenseIndicator && hasAmount
+        return expenseDetectionUseCase.isExpenseInput(input)
     }
 
     private suspend fun handleAddCategory(input: String): AIProcessingResult {

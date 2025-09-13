@@ -7,7 +7,9 @@ import com.example.aiexpensetracker.domain.repository.CategoryRepository
 import com.example.aiexpensetracker.domain.usecase.AddCategoryUseCase
 import com.example.aiexpensetracker.domain.usecase.BudgetUseCase
 import com.example.aiexpensetracker.domain.usecase.CategorizeExpenseUseCase
+import com.example.aiexpensetracker.domain.usecase.ExpenseDetectionUseCase
 import com.example.aiexpensetracker.domain.usecase.ExtractExpenseUseCase
+import com.example.aiexpensetracker.domain.usecase.SmartAmountExtractor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -27,8 +29,18 @@ object AIModule {
 
     @Provides
     @Singleton
-    fun provideExtractExpenseUseCase(): ExtractExpenseUseCase = ExtractExpenseUseCase()
+    fun provideSmartAmountExtractor(): SmartAmountExtractor = SmartAmountExtractor()
 
+    @Provides
+    @Singleton
+    fun provideExtractExpenseUseCase(
+        smartAmountExtractor: SmartAmountExtractor
+    ): ExtractExpenseUseCase = ExtractExpenseUseCase(smartAmountExtractor)
+
+    @Provides
+    @Singleton
+    fun provideExpenseDetectionUseCase(): ExpenseDetectionUseCase = ExpenseDetectionUseCase()
+    
     @Provides
     @Singleton
     fun provideCategorizeExpenseUseCase(): CategorizeExpenseUseCase = CategorizeExpenseUseCase()

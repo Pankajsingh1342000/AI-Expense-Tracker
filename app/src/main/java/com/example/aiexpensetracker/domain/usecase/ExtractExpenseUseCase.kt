@@ -4,33 +4,37 @@ import com.example.aiexpensetracker.domain.model.expense.Expense
 import timber.log.Timber
 import javax.inject.Inject
 
-class ExtractExpenseUseCase @Inject constructor() {
-
-    private val amountPatterns = listOf(
-        Regex("""(\d+(?:\.\d{1,2})?)\s*(?:rupees?|rs\.?|₹)""", RegexOption.IGNORE_CASE),
-        Regex("""(?:rupees?|rs\.?|₹)\s*(\d+(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE),
-        Regex("""(\d+(?:\.\d{1,2})?)(?:\s*(?:rupees?|rs\.?|₹))""", RegexOption.IGNORE_CASE)
-    )
+class ExtractExpenseUseCase @Inject constructor(
+    private val smartAmountExtractor: SmartAmountExtractor
+) {
 
     private val expenseActionPatterns = listOf(
-        Regex("""(?:i\s+)?(?:bought|purchased|paid for|spent on)\s+(.+?)(?:\s+for|\s+of|\s+₹|\s+rs|\s+rupees|\s+\d|$)""", RegexOption.IGNORE_CASE),
+        // Enhanced action patterns with better capture groups
+        Regex("""(?:i\s+)?(?:bought|purchased|paid for|spent on|got|ordered)\s+(.+?)(?:\s+(?:for|of|worth|costing|at)\s+\d+|\s+₹|\s+rs|\s+rupees|\s*$)""", RegexOption.IGNORE_CASE),
+
+        // Specific pattern for "subscription of X"
+        Regex("""(?:bought|purchased|got)\s+(?:a\s+)?(?:subscription|membership)\s+(?:of\s+|for\s+)?(.+?)(?:\s+(?:for|of|worth)\s+\d+|\s+₹|\s+rs|\s+rupees|\s*$)""", RegexOption.IGNORE_CASE),
+
+        // General pattern for "item of brand"
+        Regex("""(?:bought|purchased|got)\s+(.+?)\s+(?:for|of|worth)\s+\d+""", RegexOption.IGNORE_CASE),
+
+        // Fallback patterns
         Regex("""(?:i\s+)?(?:bought|purchased|got)\s+(.+)""", RegexOption.IGNORE_CASE)
     )
 
     operator fun invoke(text: String): Expense? {
         val cleanText = text.trim()
-
         Timber.d("Extracting expense from: '$cleanText'")
 
-        // Extract amount
-        val amount = extractAmount(cleanText)
+        // Use smart amount extractor
+        val amount = smartAmountExtractor.extractAmount(cleanText)
         if (amount == null) {
             Timber.d("No valid amount found")
             return null
         }
 
-        // Extract description
-        val description = extractDescription(cleanText)
+        // Extract description with improved logic
+        val description = extractDescription(cleanText, amount)
         if (description.isBlank()) {
             Timber.d("No valid description found")
             return null
@@ -46,58 +50,82 @@ class ExtractExpenseUseCase @Inject constructor() {
         )
     }
 
-    private fun extractAmount(text: String): Double? {
-        for (pattern in amountPatterns) {
-            val match = pattern.find(text)
-            if (match != null) {
-                val amountStr = match.groupValues[1]
-                return amountStr.toDoubleOrNull()?.also {
-                    Timber.d("Found amount: $it using pattern: ${pattern.pattern}")
-                }
-            }
-        }
-        return null
-    }
+    private fun extractDescription(text: String, amount: Double): String {
+        val normalizedText = text.lowercase().trim()
 
-    private fun extractDescription(text: String): String {
-        // First, try to extract using action patterns
+        // Method 1: Try action patterns
         for (pattern in expenseActionPatterns) {
-            val match = pattern.find(text)
+            val match = pattern.find(normalizedText)
             if (match != null && match.groupValues.size > 1) {
                 val description = match.groupValues[1].trim()
                 if (description.isNotBlank()) {
-                    return cleanDescription(description)
+                    val cleaned = cleanDescription(description, amount)
+                    if (cleaned.isNotBlank()) {
+                        Timber.d("Extracted description using pattern: '$cleaned'")
+                        return cleaned
+                    }
                 }
             }
         }
 
-        // Fallback: clean the whole text
-        return cleanDescription(text)
-    }
-
-    private fun cleanDescription(description: String): String {
-        var cleaned = description
-
-        // Remove amount patterns
-        for (pattern in amountPatterns) {
-            cleaned = cleaned.replace(pattern, " ")
+        // Method 2: Smart fallback - remove amount and common words
+        val fallbackDescription = smartFallbackExtraction(normalizedText, amount)
+        if (fallbackDescription.isNotBlank()) {
+            Timber.d("Extracted description using fallback: '$fallbackDescription'")
+            return fallbackDescription
         }
 
-        // Remove common action words if at the start
-        cleaned = cleaned.replace(
-            Regex("""^(?:i\s+)?(?:bought|purchased|paid for|spent on)\s+""", RegexOption.IGNORE_CASE),
-            ""
+        return "Expense"
+    }
+
+    private fun cleanDescription(description: String, amount: Double): String {
+        var cleaned = description
+
+        // Remove amount-related text
+        val amountPatterns = listOf(
+            "\\b${amount.toInt()}\\b",
+            "\\b${String.format("%.2f", amount)}\\b",
+            "\\d+\\s*(?:rupees?|rs\\.?|₹|bucks?)",
+            "(?:rupees?|rs\\.?|₹)\\s*\\d+",
+            "\\bof\\s+\\d+",
+            "\\bworth\\s+\\d+",
+            "\\bfor\\s+\\d+",
+            "\\bcosting\\s+\\d+"
         )
 
-        // Remove "for", "of" followed by amounts
-        cleaned = cleaned.replace(
-            Regex("""\b(?:for|of)\s+\d+(?:\.\d{1,2})?\s*(?:rupees?|rs\.?|₹)?""", RegexOption.IGNORE_CASE),
-            ""
-        )
+        amountPatterns.forEach { pattern ->
+            cleaned = cleaned.replace(Regex(pattern, RegexOption.IGNORE_CASE), " ")
+        }
 
-        // Clean up whitespace
-        cleaned = cleaned.replace(Regex("""\s+"""), " ").trim()
+        // Clean up extra words and whitespace
+        cleaned = cleaned.replace(Regex("\\s+"), " ").trim()
 
-        return cleaned.takeIf { it.isNotBlank() } ?: "Expense"
+        // Remove trailing/leading prepositions
+        cleaned = cleaned.replace(Regex("^(?:of|for|at|in|on|with)\\s+", RegexOption.IGNORE_CASE), "")
+        cleaned = cleaned.replace(Regex("\\s+(?:of|for|at|in|on|with)$", RegexOption.IGNORE_CASE), "")
+
+        return cleaned.trim()
+    }
+
+    private fun smartFallbackExtraction(text: String, amount: Double): String {
+        var result = text
+
+        // Remove action words from start
+        result = result.replace(Regex("^(?:i\\s+)?(?:bought|purchased|paid\\s+for|spent\\s+on|got|ordered)\\s+", RegexOption.IGNORE_CASE), "")
+
+        // Remove amount patterns
+        result = result.replace(Regex("\\b${amount.toInt()}\\s*(?:rupees?|rs\\.?|₹|bucks?)\\b", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("(?:rupees?|rs\\.?|₹)\\s*${amount.toInt()}\\b", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("\\bof\\s+${amount.toInt()}\\s*(?:rupees?|rs\\.?|₹)?", RegexOption.IGNORE_CASE), "")
+
+        // Clean up
+        result = result.replace(Regex("\\s+"), " ").trim()
+
+        // If still contains meaningful text, return it
+        if (result.length > 2 && !result.matches(Regex("\\d+"))) {
+            return result.split(" ").take(4).joinToString(" ") // Limit to first 4 words
+        }
+
+        return ""
     }
 }
